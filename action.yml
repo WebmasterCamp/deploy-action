@@ -1,0 +1,44 @@
+name: 'Deploy'
+description: 'Deploy YWC workshop'
+inputs:
+  image:
+    description: Docker image to deploy
+    required: true
+  deploymentName:
+    description: Deployment name
+    required: true
+    default: app
+  port:
+    description: Deployment port
+    required: true
+    type: number
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        if [ -z ${ACTIONS_ID_TOKEN_REQUEST_URL+x} ];
+        then
+          echo "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL env variable. Please set id-token permission to 'write'."
+          exit 1;
+        fi
+
+        BODY=$(jq --null-input \
+          --argjson image "$IMAGE" \
+          --arg deploymentName "$DEPLOYMENT_NAME" \
+          --argjson port "$PORT" \
+          --argjson env "$ENV" \
+          '{"image": $image, "deploymentName": $deploymentName, "port": $port, "env": $env}')
+        echo "Deploying with $BODY"
+
+        OIDC_TOKEN=$(curl -sLS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=deploy.ywc.in.th" -H "User-Agent: actions/oidc-client" -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+        JWT=$(echo $OIDC_TOKEN | jq -j '.value')
+        curl -sLS --fail-with-body -X POST https://deploy.ywc.in.th \
+          -H "Authorization: Bearer $JWT" \
+          -H "Content-Type: application/json" \
+          -d "$BODY"
+      env:
+        IMAGE: ${{ toJson(inputs.image) }}
+        DEPLOYMENT_NAME: ${{ inputs.deploymentName }}
+        PORT: ${{ inputs.port }}
+        ENV: ${{ toJson(env) }}
+      shell: bash
